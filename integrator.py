@@ -1,6 +1,6 @@
-from tensor_field import TensorField
+from . tensor_field import TensorField
 from mathutils import Vector
-from streamline_parameters import StreamlineParameters
+from . streamline_parameters import StreamlineParameters
 
 
 class FieldIntegrator:
@@ -10,11 +10,11 @@ class FieldIntegrator:
     def integrate(self, point: Vector, major: bool):
         pass
 
-    def sample_field_vector(self, point: Vector, major: bool):
+    def sample_field_vector(self, point: Vector, major: bool) -> Vector:
         tensor = self.field.sample_point(point)
         if major:
-            return tensor.get_major
-        return tensor.get_minor
+            return tensor.get_major()
+        return tensor.get_minor()
 
 
 class EulerIntegrator(FieldIntegrator):
@@ -22,7 +22,7 @@ class EulerIntegrator(FieldIntegrator):
         super().__init__(field)
         self.parameters = parameters
 
-    def integrate(self, point: Vector, major: bool):
+    def integrate(self, point: Vector, major: bool) -> Vector:
         return self.sample_field_vector(point, major).xy * self.parameters.dstep
 
 
@@ -31,7 +31,7 @@ class RK4Integrator(FieldIntegrator):
         super().__init__(field)
         self.parameters = parameters
 
-    def integrate(self, point: Vector, major: bool):
+    def integrate(self, point: Vector, major: bool) -> Vector:
         k1 = self.sample_field_vector(point, major)
         k23 = self.sample_field_vector(
             point + Vector((self.parameters.dstep / 2, self.parameters.dstep / 2)), major)

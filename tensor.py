@@ -8,14 +8,14 @@ class Tensor:
         self.old_theta = False
         self.r = r
         self.matrix = matrix
-        self.theta = self.calculate_theta()
+        self._theta = self.calculate_theta()
 
     @classmethod
-    def from_angle(cls, angle):
+    def from_angle(cls, angle) -> 'Tensor':
         return Tensor(1, [math.cos(angle * 4, math.sin(angle * 4))])
 
     @classmethod
-    def from_vector(cls, vector):
+    def from_vector(cls, vector) -> 'Tensor':
         t1 = vector.x ** 2 - vector.y ** 2
         t2 = 2 * vector.x * vector.y
         t3 = t1 ** 2 - t2 ** 2
@@ -23,17 +23,18 @@ class Tensor:
         return Tensor(1, [t3, t4])
 
     @classmethod
-    def zero(cls):
+    def zero(cls) -> 'Tensor':
         return Tensor(0, [0, 0])
 
-    def get_theta(self):
+    @property
+    def theta(self):
         if self.old_theta:
-            self.theta = self.calculate_theta()
+            self._theta = self.calculate_theta()
             self.old_theta = False
-        return self.theta
+        return self._theta
 
-    def add(self, tensor, smooth=False):
-        self.matrix = [v * self.r + tensor.matrix[i] for i, v in list(enumerate(self.matrix))]
+    def add(self, tensor: 'Tensor', smooth=False):
+        self.matrix = [v * self.r + tensor.matrix[i] * tensor.r for i, v in enumerate(self.matrix)]
 
         if smooth:
             self.r = math.hypot(*self.matrix)
@@ -62,18 +63,19 @@ class Tensor:
 
         self.matrix[0] = math.cos(2 * new_theta) * self.r
         self.matrix[1] = math.sin(2 * new_theta) * self.r
-        self.theta = new_theta
+        self._theta = new_theta
         return self
 
-    def get_major(self):
+    def get_major(self) -> Vector:
         if self.r == 0:
             return Vector((0.0, 0.0))
         return Vector((math.cos(self.theta), math.sin(self.theta)))
 
-    def get_minor(self):
+    def get_minor(self) -> Vector:
         if self.r == 0:
             return Vector((0.0, 0.0))
-        return Vector((math.sin(self.theta), math.cos(self.theta)))
+        angle = self.theta + math.pi / 2
+        return Vector((math.cos(angle), math.sin(angle)))
 
     def calculate_theta(self):
         if self.r == 0:

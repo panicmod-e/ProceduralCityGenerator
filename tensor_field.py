@@ -1,5 +1,6 @@
-from tensor import Tensor
-from basis_field import GridBasisField, RadialBasisField
+from . tensor import Tensor
+from mathutils import Vector
+from . basis_field import GridBasisField, RadialBasisField
 
 
 class TensorField:
@@ -7,11 +8,11 @@ class TensorField:
         self.basis_fields = []
         self.smooth = False
 
-    def add_grid(self, center, size, decay, theta):
+    def add_grid(self, center: Vector, size, decay, theta):
         grid = GridBasisField(center, size, decay, theta)
         self.add_field(grid)
 
-    def add_radial(self, center, size, decay):
+    def add_radial(self, center: Vector, size, decay):
         radial = RadialBasisField(center, size, decay)
         self.add_field(radial)
 
@@ -30,7 +31,7 @@ class TensorField:
     def get_basis_fields(self):
         return self.basis_fields
 
-    def sample_point(self, point):
+    def sample_point(self, point: Vector):
         # check if point is valid in case of water etc. here
 
         if not self.basis_fields:
