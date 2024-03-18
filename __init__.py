@@ -67,9 +67,9 @@ def main():
         dcirclejoin=5,
         dlookahead=200,
         joinangle=0.1,
-        path_iterations=50,
-        seed_tries=25,
-        simplify_tolerance=0.5,
+        path_iterations=1500,
+        seed_tries=500,
+        simplify_tolerance=0.01,
         collide_early=0
     )
 
@@ -85,30 +85,40 @@ def main():
         parameters
     )
 
-    print("world - dim", generator.world_dimensions)
-    print("grid - dim", generator.major_grid.grid_dimensions)
-
     # field.add_radial(Vector((836, 846)), 268, 46)
-    field.add_grid(Vector((776, 387)), 1371, 15, 1.483775)
-    # field.add_radial(Vector((25, 25)), 5, 5)
+    # field.add_grid(Vector((1281, 888)), 1800, 250, 0)
+    field.add_grid(Vector((1381, 788)), 1500, 35, 1.983775)
+    field.add_grid(Vector((1181, 988)), 1500, 35, -1.283775)
+    field.add_radial(Vector((800, 888)), 750, 55)
     # field.add_radial(Vector((25, 80)), size, decay)
 
     generator.create_all_streamlines()
+    print(f"done generating in {time() - t0:.2f}s")
 
-    place_stuff(generator)
-    print(f"done {time() - t0:.2f}s")
+    place_stuff(generator, simple=False)
 
 
-def place_stuff(generator: StreamlineGenerator):
+def place_stuff(generator: StreamlineGenerator, simple=False, offset=Vector((0.0, 0.0)), id="grid"):
+    t0 = time()
+    streamlines = generator.all_streamlines_simple if simple else generator.all_streamlines
+
     try:
-        col = bpy.data.collections["grid"]
+        col = bpy.data.collections[id]
         bpy.ops.object.select_all(action='DESELECT')
+        for child in col.children:
+            for obj in child.objects:
+                obj.select_set(True)
+            bpy.ops.object.delete()
+            bpy.data.collections.remove(child)
         for obj in col.objects:
             obj.select_set(True)
         bpy.ops.object.delete()
     except Exception:
-        col = bpy.data.collections.new("grid")
+        col = bpy.data.collections.new(id)
         bpy.context.scene.collection.children.link(col)
+        for i in range(len(streamlines)):
+            c = bpy.data.collections.new(id + "_streamline_" + str(i + 1))
+            col.children.link(c)
 
     vertices = [(0, 0, 0)]
     edges = []
@@ -116,18 +126,21 @@ def place_stuff(generator: StreamlineGenerator):
     mesh = bpy.data.meshes.new("streamline_coord_obj")
     mesh.from_pydata(vertices, edges, faces)
     mesh.update()
-    count = 0
-    for streamline in generator.all_streamlines:
+    count = 1
+    for streamline in streamlines:
+        col = bpy.data.collections[id + "_streamline_" + str(count)]
         for point in streamline:
-            object_name = "streamline_marker_" + str(count)
+            object_name = id + "_streamline_" + str(count) + "_marker"
             new_object = bpy.data.objects.new(object_name, mesh)
-            new_object.location = point.to_3d()
+            new_object.location = (point + offset).to_3d()
             col.objects.link(new_object)
+        count += 1
+
+    print(f"done placing in {time() - t0:2f}s")
 
 
 def register():
     for cls in classes:
-        print(cls)
         bpy.utils.register_class(cls)
 
 

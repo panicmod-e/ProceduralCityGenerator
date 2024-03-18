@@ -1,12 +1,11 @@
 import math
 import numpy as np
 from mathutils import Vector
-from typing import List
-# from typing import Deque
 from collections import deque
 from . grid_storage import GridStorage
 from . integrator import FieldIntegrator
 from . streamline_parameters import StreamlineParameters
+from . simplify import simplify
 
 
 class StreamlineIntegration:
@@ -39,8 +38,8 @@ class StreamlineGenerator:
 
         self.clear_streamlines()
 
-        self.candidate_seeds_major = deque([])
-        self.candidate_seeds_minor = deque([])
+        self.candidate_seeds_major: deque[Vector] = deque([])
+        self.candidate_seeds_minor: deque[Vector] = deque([])
         self.streamlines_done = True
         self.last_streamline_major = True
         self.integrator = integrator
@@ -60,7 +59,6 @@ class StreamlineGenerator:
         self.all_streamlines = deque([])
         self.streamlines_major = deque([])
         self.streamlines_minor = deque([])
-        # gotta find a way to simplify streamlines
         self.all_streamlines_simple = deque([])
 
     def streamlines(self, major: bool):
@@ -69,9 +67,8 @@ class StreamlineGenerator:
     def grid(self, major: bool):
         return self.major_grid if major else self.minor_grid
 
-    # any equivalent to simplify-js for python?
-    def simplify_streamline(self, s):
-        return s
+    def simplify_streamline(self, streamline: deque[Vector]):
+        return simplify(streamline, self.parameters.simplify_tolerance)
 
     def join_dangling_streamlines(self):
         for major in [True, False]:
@@ -80,19 +77,18 @@ class StreamlineGenerator:
                 if streamline[0] == streamline[-1]:
                     continue
 
-                new_start = self.get_best_next_point(streamline[0], streamline[4], streamline)
+                new_start = self.get_best_next_point(streamline[0], streamline[4])
                 if new_start is not None:
                     for p in self.points_between(streamline[0], new_start, self.parameters.dstep):
                         streamline.appendleft(p)
                         self.grid(major).add_sample(p)
 
-                new_end = self.get_best_next_point(streamline[-1], streamline[-4], streamline)
+                new_end = self.get_best_next_point(streamline[-1], streamline[-4])
                 if new_end is not None:
                     for p in self.points_between(streamline[-1], new_end, self.parameters.dstep):
                         streamline.append(p)
                         self.grid(major).add_sample(p)
 
-        # simplification currently pointless -> needs proper implementation
         self.all_streamlines_simple = deque([])
         for s in self.all_streamlines:
             self.all_streamlines_simple.append(self.simplify_streamline(s))
@@ -119,7 +115,7 @@ class StreamlineGenerator:
 
         return out
 
-    def get_best_next_point(self, point: Vector, previous_point: Vector, streamline: List[Vector]):
+    def get_best_next_point(self, point: Vector, previous_point: Vector):
         nearby_points = self.major_grid.get_nearby_points(point, self.parameters.dlookahead)
         nearby_points.extend(self.minor_grid.get_nearby_points(point, self.parameters.dlookahead))
         direction = point - previous_point
@@ -192,12 +188,15 @@ class StreamlineGenerator:
 
         return True
 
-    def valid_streamline(self, s: List[Vector]):
+    def valid_streamline(self, s: deque[Vector]):
         return len(s) > 5
 
     def sample_point(self):
         rng = np.random.default_rng()
-        return Vector((rng.random() * self.world_dimensions.x, rng.random() * self.world_dimensions.y))
+        return Vector((
+            rng.random() * self.world_dimensions.x + self.origin.x,
+            rng.random() * self.world_dimensions.y + self.origin.y)
+        )
 
     def get_seed(self, major: bool):
         if self.SEED_AT_ENDPOINTS and len(self.candidate_seeds(major)) > 0:
@@ -221,9 +220,6 @@ class StreamlineGenerator:
             grid_valid = grid_valid and self.grid(not major).is_valid_sample(point, d_sq)
         return grid_valid
 
-    # def get_seeds(self, major: bool):
-    #     return self.candidate_seeds_major if major else self.candidate_seeds_minor
-
     def candidate_seeds(self, major: bool):
         return self.candidate_seeds_major if major else self.candidate_seeds_minor
 
@@ -240,7 +236,7 @@ class StreamlineGenerator:
     def streamline_turned(self, seed: Vector, original_direction: Vector, point: Vector, direction: Vector):
         if original_direction.dot(direction) < 0:
             perpendicular_vector = Vector((original_direction.y, -original_direction.x))
-            is_left = (point - seed).dot(perpendicular_vector) > 0
+            is_left = (point - seed).dot(perpendicular_vector) < 0
             direction_up = direction.dot(perpendicular_vector) > 0
             return is_left == direction_up
         return False
@@ -274,7 +270,7 @@ class StreamlineGenerator:
                 parameters.streamline.append(next_point)
                 parameters.valid = False
 
-    def integrate_streamline(self, seed: Vector, major: bool) -> Vector:
+    def integrate_streamline(self, seed: Vector, major: bool) -> deque[Vector]:
         count = 0
         points_escaped = False
         rng = np.random.default_rng()
@@ -282,22 +278,22 @@ class StreamlineGenerator:
 
         d = self.integrator.integrate(seed, major)
         forward_parameters: StreamlineIntegration = StreamlineIntegration(
-            seed,
-            d,
-            deque([seed]),
-            d,
-            seed + d,
-            True)
+            seed=seed,
+            original_direction=d,
+            streamline=deque([seed]),
+            previous_direction=d,
+            previous_point=seed + d,
+            valid=True)
         forward_parameters.valid = self.point_in_bounds(forward_parameters.previous_point)
 
         negative_d = d * -1
         backwards_parameters: StreamlineIntegration = StreamlineIntegration(
-            seed,
-            negative_d,
-            deque([]),
-            negative_d,
-            seed + negative_d,
-            True)
+            seed=seed,
+            original_direction=negative_d,
+            streamline=deque([]),
+            previous_direction=negative_d,
+            previous_point=seed + negative_d,
+            valid=True)
         backwards_parameters.valid = self.point_in_bounds(backwards_parameters.previous_point)
 
         while count < self.parameters.path_iterations and (forward_parameters.valid or backwards_parameters.valid):
@@ -318,7 +314,7 @@ class StreamlineGenerator:
                 backwards_parameters.streamline.append(backwards_parameters.previous_point)
                 break
 
-            count *= 1
+            count += 1
 
         backwards_parameters.streamline.reverse()
         backwards_parameters.streamline.extend(forward_parameters.streamline)
