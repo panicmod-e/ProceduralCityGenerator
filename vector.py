@@ -1,6 +1,13 @@
 import math
 
 
+############################################################
+#
+# unused, for reference only, use mathutils.Vector instead
+#
+############################################################
+
+
 class Vector():
     def __init__(self, x, y):
         self.x = x

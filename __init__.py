@@ -10,6 +10,7 @@ from . tensor_field import TensorField
 # from . grid_storage import GridStorage
 from . integrator import RK4Integrator
 from . streamline_parameters import StreamlineParameters
+from . graph import Graph
 
 
 bl_info = {
@@ -56,7 +57,7 @@ def main():
     # size = 100
     # decay = 20
 
-    t0 = time()
+    print("-- starting generation --")
 
     field = TensorField()
 
@@ -70,7 +71,7 @@ def main():
         path_iterations=1500,
         seed_tries=500,
         simplify_tolerance=0.01,
-        collide_early=0
+        collide_early=0,
     )
 
     integrator = RK4Integrator(
@@ -79,23 +80,54 @@ def main():
     )
 
     generator = StreamlineGenerator(
-        integrator,
-        Vector((519, 249)),
-        Vector((1452, 1279)),
-        parameters
+        integrator=integrator,
+        origin=Vector((519, 249)),
+        world_dimensions=Vector((1452, 1279)),
+        parameters=parameters,
     )
-
-    # field.add_radial(Vector((836, 846)), 268, 46)
-    # field.add_grid(Vector((1281, 888)), 1800, 250, 0)
     field.add_grid(Vector((1381, 788)), 1500, 35, 1.983775)
     field.add_grid(Vector((1181, 988)), 1500, 35, -1.283775)
     field.add_radial(Vector((800, 888)), 750, 55)
-    # field.add_radial(Vector((25, 80)), size, decay)
 
+    # generator = StreamlineGenerator(
+    #     integrator=integrator,
+    #     origin=Vector((100.0, 100.0)),
+    #     world_dimensions=Vector((500, 500)),
+    #     parameters=parameters
+    # )
+    # field.add_grid(Vector((300, 300)), 500, 35, 1.432)
+
+    t0 = time()
     generator.create_all_streamlines()
     print(f"done generating in {time() - t0:.2f}s")
 
-    place_stuff(generator, simple=False)
+    t0 = time()
+    graph = Graph(generator)
+    print(f"generated graph in {time() - t0:.2f}s")
+    t0 = time()
+    place_graph(graph)
+    print(f"placed graph in {time() - t0:.2f}s")
+
+    place_stuff(generator, simple=True, offset=Vector((1500., 0.0)), id="grid_simple")
+    # place_stuff(generator, simple=False)
+
+
+def place_graph(graph: Graph):
+    grid = bpy.data.collections.new("grid")
+    bpy.context.scene.collection.children.link(grid)
+    for streamline in graph.streamline_sections:
+        sl = bpy.data.collections.new("streamline")
+        grid.children.link(sl)
+        for section in streamline:
+            curve = bpy.data.curves.new("section", 'CURVE')
+            curve.splines.new('BEZIER')
+            curve.splines.active.bezier_points.add(len(section) - 1)
+            obj = bpy.data.objects.new("section", curve)
+            sl.objects.link(obj)
+            for i in range(len(section)):
+                curve.splines.active.bezier_points[i].co = section[i].to_3d()
+                curve.splines.active.bezier_points[i].handle_right_type = 'VECTOR'
+                curve.splines.active.bezier_points[i].handle_left_type = 'VECTOR'
 
 
 def place_stuff(generator: StreamlineGenerator, simple=False, offset=Vector((0.0, 0.0)), id="grid"):
