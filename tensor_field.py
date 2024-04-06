@@ -3,6 +3,8 @@ from mathutils import Vector
 from . basis_field import GridBasisField, RadialBasisField
 
 
+# The TensorField class serves as the global tensor field.
+# Holds any number of basis fields, performs point sampling and summation of basis fields.
 class TensorField:
     def __init__(self):
         self.basis_fields = []
@@ -37,6 +39,7 @@ class TensorField:
         if not self.basis_fields:
             return Tensor(1, [0, 0])
 
+        # summation of all underlying basis fields
         tensor_acc = Tensor.zero()
         for field in self.basis_fields:
             tensor_acc.add(field.get_weighted_tensor(point, self.smooth), self.smooth)

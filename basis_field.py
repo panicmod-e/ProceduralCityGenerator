@@ -3,6 +3,10 @@ from . tensor import Tensor
 from mathutils import Vector
 
 
+# The BasisField subclasses define specific tensor field patterns/designs.
+#
+# Can be sampled to retrieve the tensor at a specified point of the domain.
+# 'get_weighted_tensor' returns the tensor weighted with the fields decay constant.
 class BasisField:
     def __init__(self, center: Vector, size, decay):
         self.center = center.copy()

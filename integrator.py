@@ -3,6 +3,8 @@ from mathutils import Vector
 from . streamline_parameters import StreamlineParameters
 
 
+# Integrators are used for iterative approximate discretization/integration of stream-
+# lines.
 class FieldIntegrator:
     def __init__(self, field: TensorField):
         self.field = field
@@ -26,6 +28,7 @@ class EulerIntegrator(FieldIntegrator):
         return self.sample_field_vector(point, major).xy * self.parameters.dstep
 
 
+# The classic Runge-Kutta method, RK4.
 class RK4Integrator(FieldIntegrator):
     def __init__(self, field: TensorField, parameters: StreamlineParameters):
         super().__init__(field)

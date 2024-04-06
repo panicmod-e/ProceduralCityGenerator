@@ -25,6 +25,13 @@ class StreamlineIntegration:
         self.valid = valid
 
 
+# The StreamlineGenerator is responsible for streamline tracing/discretization, creating
+# polyline representations of roads.
+# Origin point and x and y dimensions of the domain must be defined as input parameters.
+# Relevant properties for streamline integration are defined as StreamlineParameters,
+# required as input parameter.
+# Integration algorithm used is specified by the FieldIntegrator input parameter
+#   -> FieldIntegrator provides global tensor field to be sampled
 class StreamlineGenerator:
     def __init__(
             self,
@@ -46,11 +53,16 @@ class StreamlineGenerator:
         self.origin = origin
         self.world_dimensions = world_dimensions
         self.parameters = parameters
-        # parameters.dstep = min(parameters.dstep, parameters.dsep)
+
+        # Make sure dsep is not larger than dtest.
         parameters.dtest = min(parameters.dtest, parameters.dsep)
         self.dcollideself_sq = (parameters.dcirclejoin / 2) ** 2
+
+        # Number of streamlines to skip when checking streamline collision with itself.
         self.n_streamline_step = math.floor(parameters.dcirclejoin / parameters.dstep)
+        # Number of samples to ignore backwards when checking streamline collision with itself.
         self.n_streamline_look_back = 2 * self.n_streamline_step
+
         self.major_grid = GridStorage(self.world_dimensions, self.origin, parameters.dsep)
         self.minor_grid = GridStorage(self.world_dimensions, self.origin, parameters.dsep)
         self.parameters_sq = self.parameters.copy_sq()
@@ -73,7 +85,7 @@ class StreamlineGenerator:
     def join_dangling_streamlines(self):
         for major in [True, False]:
             for streamline in self.streamlines(major):
-                # ignore circles
+                # Ignore circles.
                 if streamline[0] == streamline[-1]:
                     continue
 
@@ -106,7 +118,6 @@ class StreamlineGenerator:
         i = 1
         next = v1 + (step_vector * (i / n_points))
         for i in range(1, n_points + 1):
-            # test for degenerate point
             if self.integrator.integrate(next, True).length_squared > 0.001:
                 out.append(next)
             else:
@@ -127,7 +138,6 @@ class StreamlineGenerator:
             if sample != point and sample != previous_point:
                 difference_vector = sample - point
                 if difference_vector.dot(direction) < 0:
-                    # backwards
                     continue
 
                 distance_to_sample = (point.x - sample.x) ** 2 + (point.y - sample.y) ** 2
@@ -163,6 +173,7 @@ class StreamlineGenerator:
             return True
         return False
 
+    # Creates all possible streamlines at once.
     def create_all_streamlines(self):
         self.streamlines_done = False
         major = True
@@ -170,6 +181,8 @@ class StreamlineGenerator:
             major = not major
         self.join_dangling_streamlines()
 
+    # Creates a single streamline.
+    # Finds seed point and adds new seed candidates afterwards.
     def create_streamline(self, major: bool):
         seed = self.get_seed(major)
         if seed is None:
@@ -191,6 +204,10 @@ class StreamlineGenerator:
     def valid_streamline(self, s: deque[Vector]):
         return len(s) > 5
 
+    # Returns random seed point.
+    # Performance of this implementation can become an issue in the future,
+    # if more points in the domain become invalid for streamline placement,
+    # based on parameters or input maps (water, density,...).
     def sample_point(self):
         rng = np.random.default_rng()
         return Vector((
@@ -198,6 +215,8 @@ class StreamlineGenerator:
             rng.random() * self.world_dimensions.y + self.origin.y)
         )
 
+    # Retruns seed point from candidate seeds, if available, and checks validity.
+    # Samples a new random point using self.sample_point otherwise.
     def get_seed(self, major: bool):
         if self.SEED_AT_ENDPOINTS and len(self.candidate_seeds(major)) > 0:
             while len(self.candidate_seeds(major)) > 0:
@@ -224,15 +243,12 @@ class StreamlineGenerator:
         return self.candidate_seeds_major if major else self.candidate_seeds_minor
 
     def point_in_bounds(self, v: Vector):
-        # return v.x >= self.origin.x
-        #   and v.y >= self.origin.y
-        #   and v.x < self.world_dimensions.x + self.origin.x
-        #   and v.y < self.world_dimensions.y + self.origin.y
         return (
             self.origin.x <= v.x < self.world_dimensions.x + self.origin.x
             and self.origin.y <= v.y < self.world_dimensions.y + self.origin.y
         )
 
+    # Checks if the streamline has turned more than 180 degrees, to find circles.
     def streamline_turned(self, seed: Vector, original_direction: Vector, point: Vector, direction: Vector):
         if original_direction.dot(direction) < 0:
             perpendicular_vector = Vector((original_direction.y, -original_direction.x))

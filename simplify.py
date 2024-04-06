@@ -2,6 +2,9 @@ from mathutils import Vector
 from collections import deque
 
 
+# This file offers a custom implementation of the Douglas-Peucker polyline simplification
+# algorithm to work with mathutils Vectors. The implementation is based on the simplify.js
+# JavaScript library.
 def get_square_segment_distance(p: Vector, p1: Vector, p2: Vector):
     x = p1.x
     y = p1.y

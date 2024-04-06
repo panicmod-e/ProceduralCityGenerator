@@ -2,8 +2,16 @@ import math
 from mathutils import Vector
 
 
+# Cartesian grid data structure based on the open source implementation of ProbableTrain.
+# Used to find nearby points and check separation distance, by dividing domain into grid
+# of cells containing points.
+#
+# - Note: would like to replace this with a proper spatial index that could then be used
+#   for improved intersection detection as well (Quadtree, [Hilbert] R-Tree, PH-Tree).
 class GridStorage:
     def __init__(self, world_dimensions: Vector, origin: Vector, dsep):
+        # Grid assumes origin point (0.0, 0.0).
+        # dsep represents separation distance between samples.
         self.world_dimensions: Vector = world_dimensions
         self.origin: Vector = origin
         self.dsep = dsep
@@ -72,7 +80,6 @@ class GridStorage:
 
     def vector_out_of_bounds(self, grid_v: Vector, bounds: Vector):
         return grid_v.x < 0 or grid_v.y < 0 or grid_v.x >= bounds.x or grid_v.y >= bounds.y
-        # return not (0 <= grid_v.x < bounds.x and 0 <= grid_v.y < bounds.y)
 
     # called every integration step
     def get_sample_coords(self, world_v: Vector) -> Vector:

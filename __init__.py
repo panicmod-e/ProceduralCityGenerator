@@ -1,4 +1,5 @@
 import bpy
+import bmesh
 # import math
 # import numpy as np
 from mathutils import Vector
@@ -20,12 +21,23 @@ bl_info = {
 }
 
 
+###############################################################
+#
+# Integrates implemented road graph generation with Blender.
+# Currently used for testing and visualization purposes only.
+#
+###############################################################
+
+
 class GridGenBasePanel():
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "grid gen"
 
 
+# Creates panel in the 3D Viewport sidebar (open with 'N' by default).
+# Includes button to execute main function and test generation of road graph based on tensor field
+# defined manually below.
 class GridGenGridPanel(GridGenBasePanel, bpy.types.Panel):
     bl_label = "Grid Generator"
 
@@ -52,15 +64,12 @@ classes = [
 
 
 def main():
-    # rng = np.random.default_rng()
-    # theta = rng.random() * (2 * math.pi)
-    # size = 100
-    # decay = 20
-
     print("-- starting generation --")
 
+    # Create new global TensorField
     field = TensorField()
 
+    # Create new StreamlineParameters. Values used here are derived from testing and seem like a good baseline
     parameters = StreamlineParameters(
         dsep=100,
         dtest=30,
@@ -74,47 +83,87 @@ def main():
         collide_early=0,
     )
 
+    # Create new RK4Integrator with tensor field and parameters as input.
     integrator = RK4Integrator(
         field,
         parameters
     )
 
+    # Create new StreamlineGenerator with integrator, parameters, and origin + world dimensions as input variables.
+    # Current testing shows that integer values based on common screen sizes work well.
     generator = StreamlineGenerator(
         integrator=integrator,
         origin=Vector((519, 249)),
         world_dimensions=Vector((1452, 1279)),
         parameters=parameters,
     )
+
+    # Add two grid and one radial basis field to the global field.
     field.add_grid(Vector((1381, 788)), 1500, 35, 1.983775)
     field.add_grid(Vector((1181, 988)), 1500, 35, -1.283775)
     field.add_radial(Vector((800, 888)), 750, 55)
 
-    # generator = StreamlineGenerator(
-    #     integrator=integrator,
-    #     origin=Vector((100.0, 100.0)),
-    #     world_dimensions=Vector((500, 500)),
-    #     parameters=parameters
-    # )
-    # field.add_grid(Vector((300, 300)), 500, 35, 1.432)
-
+    # Generate all streamlines.
     t0 = time()
     generator.create_all_streamlines()
     print(f"done generating in {time() - t0:.2f}s")
 
+    # Generate graph from generated streamlines.
     t0 = time()
     graph = Graph(generator)
     print(f"generated graph in {time() - t0:.2f}s")
+
+    # Visualize graph in Blender
     t0 = time()
     place_graph(graph)
+    place_nodes(graph)
     print(f"placed graph in {time() - t0:.2f}s")
 
+    # Visualize simple and complex streamlines in Blender
     place_stuff(generator, simple=True, offset=Vector((1500., 0.0)), id="grid_simple")
-    # place_stuff(generator, simple=False)
+    place_stuff(generator, simple=False, offset=Vector((3000., 0.0)), id="grid_complex")
 
 
+# Helper method to place cubes at node points of the generated graph.
+def place_nodes(graph: Graph):
+    try:
+        nodes = bpy.data.collections["nodes"]
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in nodes.objects:
+            obj.select_set(True)
+        bpy.ops.object.delete()
+    except Exception:
+        nodes = bpy.data.collections.new("nodes")
+        bpy.context.scene.collection.children.link(nodes)
+
+    cube_mesh = bpy.data.meshes.new('Basic_Cube')
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.5)
+    bm.to_mesh(cube_mesh)
+    bm.free()
+    for node in graph.nodes:
+        n = bpy.data.objects.new("Node", cube_mesh)
+        nodes.objects.link(n)
+        n.location = node.co.to_3d()
+
+
+# Helper method to turn streamline sections of the graph into curves to visualize in Blender.
 def place_graph(graph: Graph):
-    grid = bpy.data.collections.new("grid")
-    bpy.context.scene.collection.children.link(grid)
+    try:
+        grid = bpy.data.collections["grid"]
+        bpy.ops.object.select_all(action='DESELECT')
+        for child in grid.children:
+            for obj in child.objects:
+                obj.select_set(True)
+        for obj in grid.objects:
+            obj.select_set(True)
+        bpy.ops.object.delete()
+        for child in grid.children:
+            bpy.data.collections.remove(child)
+    except Exception:
+        grid = bpy.data.collections.new("grid")
+        bpy.context.scene.collection.children.link(grid)
+
     for streamline in graph.streamline_sections:
         sl = bpy.data.collections.new("streamline")
         grid.children.link(sl)
@@ -130,6 +179,9 @@ def place_graph(graph: Graph):
                 curve.splines.active.bezier_points[i].handle_left_type = 'VECTOR'
 
 
+# Helper method to place single vertices at all streamline points.
+# Can visualize either simple or complex streamlines, with optional offset for placement.
+# Deletes previously placed objects, it is faster to simply restart Blender, however.
 def place_stuff(generator: StreamlineGenerator, simple=False, offset=Vector((0.0, 0.0)), id="grid"):
     t0 = time()
     streamlines = generator.all_streamlines_simple if simple else generator.all_streamlines
@@ -140,18 +192,18 @@ def place_stuff(generator: StreamlineGenerator, simple=False, offset=Vector((0.0
         for child in col.children:
             for obj in child.objects:
                 obj.select_set(True)
-            bpy.ops.object.delete()
-            bpy.data.collections.remove(child)
         for obj in col.objects:
             obj.select_set(True)
         bpy.ops.object.delete()
+        for child in col.children:
+            bpy.data.collections.remove(child)
     except Exception:
         col = bpy.data.collections.new(id)
         bpy.context.scene.collection.children.link(col)
-        for i in range(len(streamlines)):
-            c = bpy.data.collections.new(id + "_streamline_" + str(i + 1))
-            col.children.link(c)
 
+    for i in range(len(streamlines)):
+        c = bpy.data.collections.new(id + "_streamline_" + str(i + 1))
+        col.children.link(c)
     vertices = [(0, 0, 0)]
     edges = []
     faces = []

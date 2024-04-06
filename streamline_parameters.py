@@ -1,3 +1,15 @@
+# The streamlineParameters class holds the parameters to control streamline generation.
+#
+# dsep: separation distance between streamline seeds
+# dtest: streamline integration separating distance
+# dstep: step size during streamline integration
+# dcirclejoin: distance to look for circle joining
+# dlookahead: distance to look ahead for joining dangling streamlines
+# djoinangle: angle (radians) at which to join roads
+# path_iterations: upper limit for path integration
+# seed_tries: upper limit for attempts to sample random seed
+# simplify_tolerance: tolerance for polyline simplification (see Douglas-Peucker)
+# collide_early: change of early collision, 0-1
 class StreamlineParameters:
     def __init__(
             self,

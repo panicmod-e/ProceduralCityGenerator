@@ -2,6 +2,9 @@ import math
 from mathutils import Vector
 
 
+# Tensor implementation using polar coordinates 'theta' and 'r' and a 2x2 matrix repre-
+# sented as a 2-element list consisiting of [cos(2 * theta), sin(2 * theta)], following
+# the definition of presented by Chen et al. (2008) and Zhang et al. (2007).
 class Tensor:
 
     def __init__(self, r, matrix):
@@ -9,18 +12,6 @@ class Tensor:
         self.r = r
         self.matrix = matrix
         self._theta = self.calculate_theta()
-
-    @classmethod
-    def from_angle(cls, angle) -> 'Tensor':
-        return Tensor(1, [math.cos(angle * 4, math.sin(angle * 4))])
-
-    @classmethod
-    def from_vector(cls, vector) -> 'Tensor':
-        t1 = vector.x ** 2 - vector.y ** 2
-        t2 = 2 * vector.x * vector.y
-        t3 = t1 ** 2 - t2 ** 2
-        t4 = 2 * t1 * t2
-        return Tensor(1, [t3, t4])
 
     @classmethod
     def zero(cls) -> 'Tensor':
@@ -66,11 +57,13 @@ class Tensor:
         self._theta = new_theta
         return self
 
+    # returns major eigenvector of the tensor
     def get_major(self) -> Vector:
         if self.r == 0:
             return Vector((0.0, 0.0))
         return Vector((math.cos(self.theta), math.sin(self.theta)))
 
+    # returns minor eigenvector of the tensor
     def get_minor(self) -> Vector:
         if self.r == 0:
             return Vector((0.0, 0.0))
