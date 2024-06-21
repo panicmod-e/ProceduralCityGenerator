@@ -29,6 +29,9 @@ class Node():
         self.field_dimensions = dimensions
         self.epsilon = dstep / 2
 
+        self.edges = []
+        self.border_edges = []
+
     @property
     def node_type(self):
         if any([
@@ -42,18 +45,73 @@ class Node():
             return NodeType.DEADEND
         return NodeType.INNER
 
-    def add_neighbor(self, neighbor: 'Neighbor'):
+    def add_neighbor(self, neighbor: 'DirectedEdge'):
         self.neighbors.append(neighbor)
 
-    def add_border_neighbor(self, neighbor: 'Neighbor'):
+    def add_border_neighbor(self, neighbor: 'DirectedEdge'):
         self.border_neighbors.append(neighbor)
 
+    def add_edge(self, edge: 'UndirectedEdge'):
+        self.edges.append(edge)
 
-# Neighbor class holding a node and the polyline leading from another node to self.
-class Neighbor():
-    def __init__(self, node: Node, connection: deque[Vector]):
-        self.node = node
+    def add_border_edge(self, edge: 'UndirectedEdge'):
+        self.border_edges.append(edge)
+
+
+class Edge():
+    def __init__(self, start_node: Node, end_node: Node, connection: deque[Vector], visited=False):
+        self.start_node = start_node
+        self.end_node = end_node
         self.connection = connection
+        self.visited = visited
+
+
+class UndirectedEdge(Edge):
+    def __init__(self, start_node: Node, end_node: Node, connection: deque[Vector], visited=False):
+        super().__init__(start_node, end_node, connection, visited)
+        self.directed_edges = []
+        self._direction = None
+        self._direction_backwards = None
+
+    def set_directed_edges(self, edges: list['DirectedEdge']):
+        self.directed_edges = edges
+
+    @property
+    def direction(self):
+        if self._direction is None:
+            self._direction = self.connection[1] - self.connection[0]
+        return self._direction
+
+    @property
+    def direction_backwards(self):
+        if self._direction_backwards is None:
+            self.direction_backwards = self.connection[-2] - self.connection[-1]
+        return self._direction_backwards
+
+
+class DirectedEdge(Edge):
+    def __init__(self, start_node: Node, end_node: Node, connection: deque[Vector], visited=False):
+        super().__init__(start_node, end_node, connection, visited)
+        self.undirected_edge = None
+        self._direction = None
+        self._direction_backwards = None
+
+    def set_undirected_edge(self, edge: UndirectedEdge):
+        self.undirected_edge = edge
+
+    @property
+    def direction(self):
+        if self._direction is None:
+            next_point = self.connection[0] if self.connection else self.end_node.co
+            self._direction = next_point - self.start_node.co
+        return self._direction
+
+    @property
+    def direction_backwards(self):
+        if self._direction_backwards is None:
+            next_point = self.connection[-1] if self.connection else self.start_node.co
+            self._direction_backwards = next_point - self.end_node.co
+        return self._direction_backwards
 
 
 # Builds the resulting road graph from the generated streamline polylines.
@@ -73,6 +131,10 @@ class Graph():
             streamline_sections.append(deque([]))
         self.streamline_sections = streamline_sections
         self.nodes: list[Node] = []
+        self.directed_edges: list[DirectedEdge] = []
+        self.directed_border_edges: list[DirectedEdge] = []
+        self.edges: list[UndirectedEdge] = []
+        self.border_edges: list[UndirectedEdge] = []
         self.generate_graph()
 
     def generate_graph(self):
@@ -213,8 +275,23 @@ class Graph():
                 connection.popleft()
                 connection_reversed = connection.copy()
                 connection_reversed.reverse()
-                start_node.add_neighbor(Neighbor(end_node, connection))
-                end_node.add_neighbor(Neighbor(start_node, connection_reversed))
+
+                start_neighbor = DirectedEdge(start_node, end_node, connection)
+                end_neighbor = DirectedEdge(end_node, start_node, connection_reversed)
+                self.directed_edges.append(start_neighbor)
+                self.directed_edges.append(end_neighbor)
+
+                start_node.add_neighbor(start_neighbor)
+                end_node.add_neighbor(end_neighbor)
+
+                edge = UndirectedEdge(start_node, end_node, section)
+                self.edges.append(edge)
+                start_node.add_edge(edge)
+                end_node.add_edge(edge)
+
+                start_neighbor.set_undirected_edge(edge)
+                end_neighbor.set_undirected_edge(edge)
+                edge.set_directed_edges([start_neighbor, end_neighbor])
 
     # Finds all nodes and corner points along each border of the domain and adds the nearest neighbors along
     # the border as a border_neighbor to all border nodes.
@@ -227,41 +304,51 @@ class Graph():
         bottom_nodes: list[Node] = []
         right_nodes: list[Node] = []
         top_nodes: list[Node] = []
-        top_left = Node(origin + Vector((dimensions.x, 0.0)), origin, dimensions, dstep)
+        top_left = Node(origin + Vector((0.0, dimensions.y)), origin, dimensions, dstep)
         top_right = Node(origin + dimensions, origin, dimensions, dstep)
         bottom_left = Node(origin, origin, dimensions, dstep)
-        bottom_right = Node(origin + Vector((0.0, dimensions.y)), origin, dimensions, dstep)
+        bottom_right = Node(origin + Vector((dimensions.x, 0.0)), origin, dimensions, dstep)
+        self.nodes.append(top_left)
+        self.nodes.append(top_right)
+        self.nodes.append(bottom_left)
+        self.nodes.append(bottom_right)
+        limit = dimensions + origin
         for node in self.nodes:
-            if abs(node.co.x - (origin.x)) <= epsilon:
+            if abs(node.co.x - (origin.x)) <= epsilon or node.co.x < origin.x:
                 left_nodes.append(node)
-            if abs(node.co.y - (origin.y)) <= epsilon:
+            if abs(node.co.y - (origin.y)) <= epsilon or node.co.y < origin.y:
                 bottom_nodes.append(node)
-            if abs(node.co.x - (origin.x + dimensions.x)) <= epsilon:
+            if abs(node.co.x - (origin.x + dimensions.x)) <= epsilon or node.co.x > limit.x:
                 right_nodes.append(node)
-            if abs(node.co.y - (origin.y + dimensions.y)) <= epsilon:
+            if abs(node.co.y - (origin.y + dimensions.y)) <= epsilon or node.co.y > limit.y:
                 top_nodes.append(node)
         left_nodes.sort(key=lambda n: n.co.y)
-        bottom_nodes.sort(key=lambda n: n.co.x)
-        right_nodes.sort(key=lambda n: n.co.y)
+        bottom_nodes.sort(key=lambda n: n.co.x, reverse=True)
+        right_nodes.sort(key=lambda n: n.co.y, reverse=True)
         top_nodes.sort(key=lambda n: n.co.x)
-        left_nodes[0].add_border_neighbor(Neighbor(bottom_left, deque([])))
-        left_nodes[-1].add_border_neighbor(Neighbor(top_left, deque([])))
-        bottom_nodes[0].add_border_neighbor(Neighbor(bottom_left, deque([])), )
-        bottom_nodes[-1].add_border_neighbor(Neighbor(bottom_right, deque([])))
-        right_nodes[0].add_border_neighbor(Neighbor(bottom_right, deque([])))
-        right_nodes[-1].add_border_neighbor(Neighbor(top_right, deque([])))
-        top_nodes[0].add_border_neighbor(Neighbor(top_left, deque([])))
-        top_nodes[-1].add_border_neighbor(Neighbor(top_right, deque([])))
+
         for border in [left_nodes, bottom_nodes, right_nodes, top_nodes]:
             self.add_neighboring_node_connections(border)
 
     def add_neighboring_node_connections(self, nodes: list[Node]):
-        for i in range(len(nodes)):
+        if len(nodes) < 2:
+            return
+        for i in range(len(nodes) - 1):
             node = nodes[i]
-            for j in [i - 1, i + 1]:
-                if j in range(len(nodes)):
-                    neighbor = Neighbor(nodes[j], deque([]))
-                    node.add_border_neighbor(neighbor)
+            other_node = nodes[i + 1]
+            start_neighbor = DirectedEdge(node, other_node, deque([]))
+            end_neighbor = DirectedEdge(other_node, node, deque([]), visited=True)
+            self.directed_border_edges.append(start_neighbor)
+            self.directed_border_edges.append(end_neighbor)
+            edge = UndirectedEdge(node, other_node, deque([node.co, other_node.co]))
+            self.border_edges.append(edge)
+            start_neighbor.set_undirected_edge(edge)
+            end_neighbor.set_undirected_edge(edge)
+            edge.set_directed_edges([start_neighbor, end_neighbor])
+            node.add_border_neighbor(start_neighbor)
+            other_node.add_border_neighbor(end_neighbor)
+            node.add_border_edge(edge)
+            other_node.add_border_edge(edge)
 
     def point_on_world_border(self, point: Vector):
         world_dimensions = self.streamlines.world_dimensions

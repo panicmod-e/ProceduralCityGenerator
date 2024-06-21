@@ -12,6 +12,7 @@ from ProceduralCityGenerator.tensor_field import TensorField
 from ProceduralCityGenerator.integrator import RK4Integrator
 from ProceduralCityGenerator.streamline_parameters import StreamlineParameters
 from ProceduralCityGenerator.graph import Graph
+from ProceduralCityGenerator.lot_finder import LotFinder
 
 
 bl_info = {
@@ -137,14 +138,89 @@ def main():
     place_nodes(graph)
     print(f"placed graph in {time() - t0:.2f}s")
 
-    generator2.create_all_streamlines()
-    graph2 = Graph(generator2)
-    place_graph(graph2, prefix="two")
-    place_nodes(graph2, prefix="two")
+    # generator2.create_all_streamlines()
+    # graph2 = Graph(generator2)
+    # place_graph(graph2, prefix="two")
+    # place_nodes(graph2, prefix="two")
+
+    poly = LotFinder(graph)
+    poly.find_lots()
+    place_polygons(poly)
+
+    # visualize_edges(graph)
+
+    # mark_nodes_without_neighbor(graph)
 
     # # Visualize simple and complex streamlines in Blender
     # place_stuff(generator, simple=True, offset=Vector((1500., 0.0)), id="grid_simple")
     # place_stuff(generator, simple=False, offset=Vector((3000., 0.0)), id="grid_complex")
+
+
+def visualize_edges(graph):
+    directed_edges = [*graph.edges, *graph.border_edges]
+    try:
+        edges = bpy.data.collections["edges"]
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in edges.objects:
+            obj.select_set(True)
+        bpy.ops.object.delete()
+    except Exception:
+        edges = bpy.data.collections.new("edges")
+        bpy.context.scene.collection.children.link(edges)
+
+    for edge in directed_edges:
+        e = edge.connection
+        curve = bpy.data.curves.new("edge", 'CURVE')
+        curve.splines.new('BEZIER')
+        curve.splines.active.bezier_points.add(len(e) - 1)
+        obj = bpy.data.objects.new("edge", curve)
+        edges.objects.link(obj)
+        for i in range(len(e)):
+            curve.splines.active.bezier_points[i].co = e[i].to_3d()
+            curve.splines.active.bezier_points[i].handle_right_type = 'VECTOR'
+            curve.splines.active.bezier_points[i].handle_left_type = 'VECTOR'
+
+
+def place_polygons(poly_generator):
+    try:
+        lots = bpy.data.collections["lots"]
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in lots.objects:
+            obj.select_set(True)
+        bpy.ops.object.delete()
+    except Exception:
+        lots = bpy.data.collections.new("lots")
+        bpy.context.scene.collection.children.link(lots)
+
+    for lot in poly_generator.lots:
+        if len(lot) < 3:
+            continue
+        bm = bmesh.new()
+        mesh = bpy.data.meshes.new('lot')
+        bm.from_mesh(mesh)
+        verts = []
+        for point in lot:
+            verts.append(bm.verts.new(point.to_3d().to_tuple()))
+        bm.faces.new(verts)
+        bm.to_mesh(mesh)
+        obj = bpy.data.objects.new('lot', mesh)
+        lots.objects.link(obj)
+
+
+def mark_nodes_without_neighbor(graph):
+    cube_mesh = bpy.data.meshes.new('Cube_Marker')
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=5.0)
+    bm.to_mesh(cube_mesh)
+    bm.free()
+    markers = bpy.data.collections.new("markers")
+    bpy.context.scene.collection.children.link(markers)
+    for node in graph.nodes:
+        if [*node.neighbors, *node.border_neighbors]:
+            continue
+        n = bpy.data.objects.new("Marker", cube_mesh)
+        markers.objects.link(n)
+        n.location = node.co.to_3d()
 
 
 # Helper method to place cubes at node points of the generated graph.
