@@ -156,10 +156,10 @@ class Graph():
             # Extend start of streamline slightly, to check for T-intersection.
             # Also tests for intersections with itself, which can happen in the current implementation,
             # probably due to inaccuracies in the current integration around circular elements in the tensor field.
-            if not (self.streamline_is_circle(streamline) or self.point_on_world_border(streamline[0])):
+            if not (self.streamline_is_circle(streamline)):
                 direction = streamline[0] - streamline[1]
                 direction.normalize()
-                segment_end = streamline[0] + (direction * self.streamlines.parameters.dstep * 1.5)
+                segment_end = streamline[0] + (direction * self.streamlines.parameters.dstep * 2)
                 segment_start = streamline[0]
                 intersections = self.find_intersections(segment_start, segment_end, streamline, -1)
                 if intersections:
@@ -174,7 +174,8 @@ class Graph():
                         section.append(intersection)
                         self.streamline_sections[i].append(section)
                         section = deque([intersection])
-                    section.append(segment_end)
+                    if (section[-1] - segment_end).length > 0.1:
+                        section.append(segment_end)
                 else:
                     section.append(segment_end)
             # Join start and end section of circular streamlines, if they should connect.
@@ -183,10 +184,10 @@ class Graph():
                 self.streamline_sections[i][0].extendleft(reversed(section))
             else:
                 # Extend end of streamline slightly, to check for T-intersections.
-                if not self.point_on_world_border(streamline[-1]):
+                if (not self.point_on_world_border(streamline[-1])) or True:
                     direction = streamline[-1] - streamline[-2]
                     direction.normalize()
-                    segment_end = streamline[-1] + (direction * self.streamlines.parameters.dstep * 1.5)
+                    segment_end = streamline[-1] + (direction * self.streamlines.parameters.dstep * 2)
                     segment_start = streamline[-1]
                     intersections = self.find_intersections(segment_start, segment_end, streamline, len(streamline) - 2)
                     if intersections:
@@ -216,11 +217,11 @@ class Graph():
                     intersections.append(intersection)
             # Extend other streamlines start and end points slightly, if they don't end at domain borders.
             if not self.streamline_is_circle(s):
-                if not self.point_on_world_border(s[0]):
+                if (not self.point_on_world_border(s[0])) or True:
                     intersection = self.find_endpoint_intersections(s[0], s[1], segment_start, segment_end)
                     if intersection is not None:
                         intersections.append(intersection)
-                if not self.point_on_world_border(s[-1]):
+                if (not self.point_on_world_border(s[-1])) or True:
                     intersection = self.find_endpoint_intersections(s[-1], s[-2], segment_start, segment_end)
                     if intersection is not None:
                         intersections.append(intersection)
@@ -257,6 +258,10 @@ class Graph():
                         and math.sqrt((node.co.x - end.x) ** 2 + (node.co.y - end.y) ** 2) <= tolerance
                     ):
                         end_node = node
+                    # if start_node is None and node.co == start:
+                    #     start_node = node
+                    # elif end_node is None and node.co == end:
+                    #     end_node = node
                     if start_node is not None and end_node is not None:
                         break
                 # If no existing nodes match start/end points, create new node.
@@ -271,8 +276,10 @@ class Graph():
                 # The section leading from end node to start node is reversed to ensure that the connections are
                 # consistent and the polyline points are in the correct order from node to neighbor.
                 connection = section.copy()
-                connection.pop()
-                connection.popleft()
+                if connection:
+                    connection.pop()
+                if connection:
+                    connection.popleft()
                 connection_reversed = connection.copy()
                 connection_reversed.reverse()
 
@@ -353,11 +360,17 @@ class Graph():
     def point_on_world_border(self, point: Vector):
         world_dimensions = self.streamlines.world_dimensions
         origin = self.streamlines.origin
-        epsilon = self.streamlines.parameters.dstep / 2
+        limit = origin + world_dimensions
+        # epsilon = self.streamlines.parameters.dstep / 4
+        epsilon = 0.1
         return any([
-            abs(point.x - (origin.x + world_dimensions.x)) <= epsilon,
+            point.x <= origin.x,
+            point.x >= limit.x,
+            point.y <= origin.y,
+            point.y >= limit.y,
+            abs(point.x - limit.x) <= epsilon,
             abs(point.x - origin.x) <= epsilon,
-            abs(point.y - (origin.y + world_dimensions.y)) <= epsilon,
+            abs(point.y - limit.y) <= epsilon,
             abs(point.y - origin.y) <= epsilon
         ])
 

@@ -12,7 +12,7 @@ from ProceduralCityGenerator.tensor_field import TensorField
 from ProceduralCityGenerator.integrator import RK4Integrator
 from ProceduralCityGenerator.streamline_parameters import StreamlineParameters
 from ProceduralCityGenerator.graph import Graph
-from ProceduralCityGenerator.lot_finder import LotFinder
+# from ProceduralCityGenerator.lot_finder import LotFinder
 
 
 bl_info = {
@@ -91,26 +91,30 @@ def main():
         parameters
     )
 
-    integrator2 = RK4Integrator(
-        field2,
-        parameters
-    )
+    # integrator2 = RK4Integrator(
+    #     field2,
+    #     parameters
+    # )
 
     # Create new StreamlineGenerator with integrator, parameters, and origin + world dimensions as input variables.
     # Current testing shows that integer values based on common screen sizes work well.
+    # seeds fixed(?): 69172825, 31024308
+    #
+    # conflicting: (54606955, 28678723) 37519853
     generator = StreamlineGenerator(
         integrator=integrator,
         origin=Vector((519, 249)),
         world_dimensions=Vector((1452, 1279)),
         parameters=parameters,
+        seed=93209106
     )
 
-    generator2 = StreamlineGenerator(
-        integrator=integrator2,
-        origin=Vector((1500 + 519, 249)),
-        world_dimensions=Vector((1452, 1279)),
-        parameters=parameters,
-    )
+    # generator2 = StreamlineGenerator(
+    #     integrator=integrator2,
+    #     origin=Vector((1500 + 519, 249)),
+    #     world_dimensions=Vector((1452, 1279)),
+    #     parameters=parameters,
+    # )
 
     # Add two grid and one radial basis field to the global field.
     field.add_grid(Vector((1381, 788)), 1500, 35, 1.983775)
@@ -143,9 +147,13 @@ def main():
     # place_graph(graph2, prefix="two")
     # place_nodes(graph2, prefix="two")
 
-    poly = LotFinder(graph)
-    poly.find_lots()
-    place_polygons(poly)
+    # poly = LotFinder(graph)
+    # poly.find_lots()
+    # place_polygons(poly)
+
+    # visualize_node_neighbors(graph)
+
+    # place_stuff(generator, simple=True, id="streamlines_simple")
 
     # visualize_edges(graph)
 
@@ -154,6 +162,47 @@ def main():
     # # Visualize simple and complex streamlines in Blender
     # place_stuff(generator, simple=True, offset=Vector((1500., 0.0)), id="grid_simple")
     # place_stuff(generator, simple=False, offset=Vector((3000., 0.0)), id="grid_complex")
+
+    print("-- generation done --")
+
+
+def visualize_node_neighbors(graph):
+    try:
+        node_neighbors = bpy.data.collections["node_neighbors"]
+        bpy.ops.object.select_all(action='DESELECT')
+        for collection in node_neighbors.children:
+            for obj in collection.children:
+                obj.select_set(True)
+        bpy.ops.object.delete()
+        for collection in node_neighbors.children:
+            bpy.data.collections.remove(collection)
+    except Exception:
+        node_neighbors = bpy.data.collections.new("node_neighbors")
+        bpy.context.scene.collection.children.link(node_neighbors)
+
+    cube_mesh = bpy.data.meshes.new('Basic_Cube')
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.5)
+    bm.to_mesh(cube_mesh)
+    bm.free()
+
+    for node in graph.nodes:
+        collection = bpy.data.collections.new("node")
+        node_neighbors.children.link(collection)
+        n = bpy.data.objects.new("Node", cube_mesh)
+        collection.objects.link(n)
+        n.location = node.co.to_3d()
+        for neighbor in node.neighbors:
+            e = [neighbor.start_node.co, *neighbor.connection, neighbor.end_node.co]
+            curve = bpy.data.curves.new("node_neighbor", 'CURVE')
+            curve.splines.new('BEZIER')
+            curve.splines.active.bezier_points.add(len(e) - 1)
+            obj = bpy.data.objects.new("node_neighbor", curve)
+            collection.objects.link(obj)
+            for i in range(len(e)):
+                curve.splines.active.bezier_points[i].co = e[i].to_3d()
+                curve.splines.active.bezier_points[i].handle_right_type = 'VECTOR'
+                curve.splines.active.bezier_points[i].handle_left_type = 'VECTOR'
 
 
 def visualize_edges(graph):
@@ -185,14 +234,19 @@ def place_polygons(poly_generator):
     try:
         lots = bpy.data.collections["lots"]
         bpy.ops.object.select_all(action='DESELECT')
-        for obj in lots.objects:
-            obj.select_set(True)
+        for col in lots.children:
+            for obj in col.objects:
+                obj.select_set(True)
         bpy.ops.object.delete()
+        for col in lots.children:
+            bpy.data.collections.remove(col)
     except Exception:
         lots = bpy.data.collections.new("lots")
         bpy.context.scene.collection.children.link(lots)
 
     for lot in poly_generator.lots:
+        new_lot = bpy.data.collections.new("lot")
+        lots.children.link(new_lot)
         if len(lot) < 3:
             continue
         bm = bmesh.new()
@@ -204,7 +258,7 @@ def place_polygons(poly_generator):
         bm.faces.new(verts)
         bm.to_mesh(mesh)
         obj = bpy.data.objects.new('lot', mesh)
-        lots.objects.link(obj)
+        new_lot.objects.link(obj)
 
 
 def mark_nodes_without_neighbor(graph):

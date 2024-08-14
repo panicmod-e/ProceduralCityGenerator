@@ -38,7 +38,8 @@ class StreamlineGenerator:
             integrator: FieldIntegrator,
             origin: Vector,
             world_dimensions: Vector,
-            parameters: StreamlineParameters):
+            parameters: StreamlineParameters,
+            seed=None):
 
         self.SEED_AT_ENDPOINTS = False
         self.NEAR_EDGE = 3
@@ -53,6 +54,10 @@ class StreamlineGenerator:
         self.origin = origin
         self.world_dimensions = world_dimensions
         self.parameters = parameters
+        self.seed = seed if seed is not None else self.randomize_seed()
+        self.rng = np.random.default_rng(self.seed)
+
+        print(f"generating using seed {self.seed}")
 
         # Make sure dsep is not larger than dtest.
         parameters.dtest = min(parameters.dtest, parameters.dsep)
@@ -66,6 +71,10 @@ class StreamlineGenerator:
         self.major_grid = GridStorage(self.world_dimensions, self.origin, parameters.dsep)
         self.minor_grid = GridStorage(self.world_dimensions, self.origin, parameters.dsep)
         self.parameters_sq = self.parameters.copy_sq()
+
+    def randomize_seed(self):
+        rng = np.random.default_rng()
+        return rng.integers(10000, 100000000)
 
     def clear_streamlines(self):
         self.all_streamlines = deque([])
@@ -209,10 +218,9 @@ class StreamlineGenerator:
     # if more points in the domain become invalid for streamline placement,
     # based on parameters or input maps (water, density,...).
     def sample_point(self):
-        rng = np.random.default_rng()
         return Vector((
-            rng.random() * self.world_dimensions.x + self.origin.x,
-            rng.random() * self.world_dimensions.y + self.origin.y)
+            self.rng.random() * self.world_dimensions.x + self.origin.x,
+            self.rng.random() * self.world_dimensions.y + self.origin.y)
         )
 
     # Retruns seed point from candidate seeds, if available, and checks validity.
@@ -289,8 +297,7 @@ class StreamlineGenerator:
     def integrate_streamline(self, seed: Vector, major: bool) -> deque[Vector]:
         count = 0
         points_escaped = False
-        rng = np.random.default_rng()
-        collide_both = rng.random() < self.parameters.collide_early
+        collide_both = self.rng.random() < self.parameters.collide_early
 
         d = self.integrator.integrate(seed, major)
         forward_parameters: StreamlineIntegration = StreamlineIntegration(
